@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWM Patient Task (3 s)</title>
+<style>
+  :root { --bg:#000; --fg:#fff; --dim:#9aa; --accent:#4aa3ff; --ok:#3ecf6e; --bad:#ff5d5d; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+              font-family:"Yu Gothic","Meiryo",system-ui,sans-serif; overflow:hidden; }
+  #setup { max-width:760px; margin:0 auto; padding:24px 16px; overflow:auto; height:100%; box-sizing:border-box; }
+  #setup h1 { font-size:22px; margin:0 0 4px; }
+  #setup p.sub { color:var(--dim); margin:0 0 16px; font-size:14px; }
+  .row { display:flex; gap:12px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+  .row label { min-width:200px; color:var(--dim); font-size:14px; }
+  input[type=text],input[type=number],select { background:#111; color:var(--fg); border:1px solid #444;
+              border-radius:6px; padding:8px 10px; font-size:16px; }
+  input[type=range] { width:240px; }
+  button { background:var(--accent); color:#001; border:0; border-radius:8px; padding:10px 18px; font-size:16px; cursor:pointer; }
+  button.secondary { background:#222; color:var(--fg); border:1px solid #555; }
+  #stage { display:none; position:fixed; inset:0; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
+  #msg { font-size:min(5.2vw,44px); line-height:1.6; max-width:86vw; white-space:pre-line; }
+  #msg.big { font-size:min(14vw,140px); }
+  #msg.small { font-size:min(3.6vw,30px); color:var(--dim); }
+  #sub { font-size:min(3.4vw,30px); color:var(--dim); margin-top:12px; white-space:pre-line; }
+  #btns { display:none; gap:5vw; margin-top:5vh; }
+  #btns button { font-size:min(6vw,52px); padding:3vh 6vw; min-width:26vw; border-radius:16px; color:#fff; }
+  #btnSame { background:#1c5fbf; } #btnDiff { background:#b8541c; }
+  #btns small { display:block; font-size:min(2.6vw,22px); opacity:.8; margin-top:4px; }
+  #summary { white-space:pre; font-family:Consolas,monospace; font-size:14px; text-align:left; color:#cfe; margin-top:20px; display:none; }
+  #endbtns { display:none; gap:10px; margin-top:20px; }
+  .note { color:var(--dim); font-size:13px; margin-top:18px; }
+</style>
+</head>
+<body>
+
+<!-- ============================ EXPERIMENTER SETUP ============================ -->
+<div id="setup">
+  <h1>Auditory Working Memory (pitch) – patient task</h1>
+  <p class="sub">Experimenter screen. Use headphones. Chrome / Edge recommended. Works offline.</p>
+
+  <div class="row"><label>Participant ID</label><input id="pid" type="text" placeholder="e.g. CB01 or HC01"></div>
+  <div class="row"><label>Group</label>
+    <select id="group"><option>control</option><option>patient</option></select></div>
+  <div class="row"><label>Session</label><input id="session" type="number" value="1" min="1" style="width:80px"></div>
+  <div class="row"><label>Language / 言語</label>
+    <select id="lang"><option value="en" selected>English</option><option value="ja">日本語</option></select></div>
+  <div class="row"><label>Response mode</label>
+    <select id="rmode">
+      <option value="self">Participant presses button / touches screen</option>
+      <option value="proxy">Participant answers aloud; experimenter presses key</option>
+    </select></div>
+  <div class="row"><label>Hand used (if self)</label>
+    <select id="hand"><option>right</option><option>left</option><option>n/a (proxy)</option></select></div>
+  <div class="row"><label>Block order</label>
+    <select id="order">
+      <option value="A">A: pitch-short (1 s) → pitch-3 s → [suppression]</option>
+      <option value="B">B: pitch-3 s → [suppression] → pitch-short (1 s)</option>
+    </select></div>
+  <div class="row"><label>Add articulatory-suppression block</label><input id="supp" type="checkbox"></div>
+  <div class="row"><label>Trial feedback (as in MEG study)</label><input id="fb" type="checkbox" checked></div>
+  <div class="row"><label>Equal-loudness contour (phon)</label><input id="phon" type="number" value="60" min="30" max="90" style="width:80px">
+    <span class="note" style="margin:0">MEG study used 52 phon; raise for older patients / ward noise.</span></div>
+  <div class="row"><label>Master volume (1 kHz tone)</label>
+    <input id="vol" type="range" min="0.02" max="0.45" step="0.01" value="0.2">
+    <button class="secondary" id="testTone" type="button">▶ Play 1 kHz test tone</button></div>
+  <div class="row"><label>Notes (hearing, hemiparesis, ...)</label><input id="notes" type="text" style="width:420px"></div>
+  <div class="row"><button id="start" type="button">Start session</button></div>
+  <p class="note">
+    Keys during the task — Participant: <b>1</b> / ← = SAME, <b>2</b> / → = DIFFERENT (or click / touch the big buttons).
+    Experimenter: <b>P</b> = pause after current trial (Space resumes), <b>Esc</b> = stop &amp; save.
+    Data are downloaded automatically as CSV at the end and are also backed up in the browser after every trial.
+  </p>
+</div>
+
+<!-- ============================ PARTICIPANT STAGE ============================ -->
+<div id="stage">
+  <div id="msg"></div>
+  <div id="sub"></div>
+  <div id="btns">
+    <button id="btnSame" type="button"></button>
+    <button id="btnDiff" type="button"></button>
+  </div>
+  <div id="summary"></div>
+  <div id="endbtns">
+    <button id="dl" type="button">Download CSV</button>
+    <button id="showsum" class="secondary" type="button">Experimenter summary</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   AWM patient task – browser version of the Cogent MEG paradigm
+   (Dheerendra, Newcastle 2016) for testing the Cerebellum–Broca model
+   in cerebellar-stroke patients (Hokuto Hospital).
+   ===================================================================== */
+
+// ----------------------------- parameters (as in main_WM_ActiveControl.m) -----------------------------
+const P = {
+  alertDur: 1000,          // ms, '*' warning before first stimulus
+  stimDur: 400,            // ms, incl. 10 ms on/off ramps
+  rampMs: 10,
+  isi: 750,                // ms between the two tones
+  preCueGap: 250,          // ms after 2nd stimulus before cue
+  cueDur: 900,             // ms
+  delayLong: 3000,         // ms retention (shortened from 12 s in MEG study)
+  delayShort: 1000,        // ms perceptual-control block
+  delayPractice: 2000,
+  maxRespMs: 10000,        // generous: cerebellar patients may be slow
+  feedbackMs: 500,
+  itiMs: [3250, 3750, 4250],
+  nTrials: 16,
+  nPractice: 4,
+  pctDiff: 0.01,           // 1 % frequency change (MEG study Thresh_wm was 10 %)
+  lowRange: [300, 570],    // Hz
+  highRange: [2000, 2800], // Hz
+  nDiscTones: 6,
+  minSemitone: 0.75,
+  maxRun: 4,
+};
+
+// ----------------------------- strings -----------------------------
+const T = {
+  ja: {
+    same:'同じ', diff:'違う', ask:'同じ？　違う？',
+    correct:'正解', wrong:'不正解', none:'無回答',
+    cueAud:['1つ目の音を\n覚えてください','2つ目の音を\n覚えてください'],
+    retQuiet:'待っている間は、声を出さず静かに覚えておいてください。',
+    retSupp:'待っている間、小さな声で\n「ラ・ラ・ラ・ラ…」と言い続けてください。',
+    pause:'休憩中です。\n準備ができたら検査者が合図します。',
+    practiceIntro:'まず練習をします。\n正解・不正解が表示されます。',
+    practiceDone:'練習は終わりです。\nここから本番です。',
+    instrAud:'2つの音が順番に聞こえます。\nそのあと、画面に「どちらの音を覚えるか」が出ます。\n\nその音の高さを頭の中で覚えておいてください。\nしばらく間をおいて、同じ高さの音が2回続けて聞こえます。\n\n覚えていた音と「同じ」か「違う」かを答えてください。',
+    instrAud1:'（今回は、間が短いです。）',
+    instrAud12:'（今回は、間が長いです。声は出さず、静かに覚えてください。）',
+    instrSupp:'（今回は、待っている間ずっと、小さな声で「ラ・ラ・ラ…」と言い続けてください。）',
+    answerHelp:'答え方：　1 または ← ＝ 同じ　　2 または → ＝ 違う\n（画面のボタンを押してもかまいません）',
+    startPrompt:'準備ができたら検査者に合図してください。',
+    start:'（検査者：スペースキーで開始）',
+    blockEnd:'ここまでお疲れさまでした。',
+    thanks:'ありがとうございました。\nお疲れさまでした。',
+    volTitle:'音量の確認',
+    volMsg:'音が聞こえたら、検査者に教えてください。',
+  },
+  en: {
+    same:'SAME', diff:'DIFFERENT', ask:'Same or different?',
+    correct:'Correct', wrong:'Wrong', none:'No response',
+    cueAud:['Remember the\nFIRST tone','Remember the\nSECOND tone'],
+    retQuiet:'While you wait, stay silent and keep the item in mind.',
+    retSupp:'While you wait, keep saying\n"la-la-la-la…" quietly out loud.',
+    pause:'Rest.\nThe experimenter will start again when you are ready.',
+    practiceIntro:'First, a short practice.\nYou will see whether you were right.',
+    practiceDone:'Practice is finished.\nNow the real task begins.',
+    instrAud:'You will hear two tones, one after the other.\nThen the screen tells you which one to remember.\n\nKeep that pitch in your mind.\nAfter a silent gap, you will hear two identical test tones.\n\nSay whether they are the SAME as, or DIFFERENT from, the tone you remembered.',
+    instrAud1:'(This time the gap is short.)',
+    instrAud12:'(This time the gap is long. Stay silent and keep the pitch in mind.)',
+    instrSupp:'(This time, keep saying "la-la-la…" quietly out loud for the whole gap.)',
+    answerHelp:'Answer:  1 or ←  = SAME     2 or →  = DIFFERENT\n(You can also press the big buttons on screen.)',
+    startPrompt:'Tell the experimenter when you are ready.',
+    start:'(Experimenter: press SPACE to start)',
+    blockEnd:'Well done so far.',
+    thanks:'Thank you.\nThat is the end of the session.',
+    volTitle:'Volume check',
+    volMsg:'Tell the experimenter when you can hear the sound.',
+  }
+};
+
+// ----------------------------- small helpers -----------------------------
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const now = () => performance.now();
+
+function hashSeed(s){ let h = 2166136261>>>0; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h,16777619)>>>0; } return h>>>0; }
+function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function shuffle(arr, rng){ const a = arr.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+const st = (f1,f2) => 12*Math.log2(f2/f1);
+
+function maxRun(seq){ let m=1,c=1; for(let i=1;i<seq.length;i++){ c = (seq[i]===seq[i-1])? c+1 : 1; if(c>m) m=c; } return m; }
+
+// ----------------------------- ISO 226 equal-loudness (same tables as iso226.m) -----------------------------
+const ISO = {
+  f:  [20,25,31.5,40,50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500],
+  af: [0.532,0.506,0.480,0.455,0.432,0.409,0.387,0.367,0.349,0.330,0.315,0.301,0.288,0.276,0.267,0.259,0.253,0.250,0.246,0.244,0.243,0.243,0.243,0.242,0.242,0.245,0.254,0.271,0.301],
+  Lu: [-31.6,-27.2,-23.0,-19.1,-15.9,-13.0,-10.3,-8.1,-6.2,-4.5,-3.1,-2.0,-1.1,-0.4,0.0,0.3,0.5,0.0,-2.7,-4.1,-1.0,1.7,2.5,1.2,-2.1,-7.1,-11.2,-10.7,-3.1],
+  Tf: [78.5,68.7,59.5,51.1,44.0,37.5,31.5,26.5,22.1,17.9,14.4,11.4,8.6,6.2,4.4,3.0,2.2,2.4,3.5,1.7,-1.3,-4.2,-6.0,-5.4,-1.5,6.0,12.6,13.9,12.3],
+};
+function iso226(phon){
+  const spl = ISO.f.map((_,i)=>{
+    const Af = 4.47e-3*(Math.pow(10,0.025*phon)-1.15) + Math.pow(0.4*Math.pow(10,((ISO.Tf[i]+ISO.Lu[i])/10)-9), ISO.af[i]);
+    return (10/ISO.af[i])*Math.log10(Af) - ISO.Lu[i] + 94;
+  });
+  return spl;
+}
+let SPL = iso226(60);
+function splAt(freq){            // linear interpolation in log-frequency
+  const lf = Math.log(freq), L = ISO.f.map(Math.log);
+  let i = 0; while (i < L.length-2 && lf > L[i+1]) i++;
+  const w = (lf-L[i])/(L[i+1]-L[i]);
+  return SPL[i] + w*(SPL[i+1]-SPL[i]);
+}
+function relGain(freq){ return Math.pow(10, (splAt(freq)-splAt(1000))/20); }   // 1 at 1 kHz
+
+// ----------------------------- audio -----------------------------
+let actx = null, masterVol = 0.2;
+function ensureAudio(){ if(!actx){ actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100}); } if(actx.state==='suspended') actx.resume(); }
+function makeToneBuffer(freq){
+  const sr = actx.sampleRate, n = Math.round(P.stimDur/1000*sr), r = Math.round(P.rampMs/1000*sr);
+  const buf = actx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+  const amp = masterVol*relGain(freq);
+  for (let i=0;i<n;i++){
+    let env = 1;
+    if (i<r) env = (1-Math.cos(Math.PI*i/r))/2;
+    else if (i>=n-r) env = (1+Math.cos(Math.PI*(i-(n-r))/r))/2;
+    d[i] = amp*env*Math.sin(2*Math.PI*freq*i/sr);
+  }
+  return buf;
+}
+function playTone(freq){
+  ensureAudio();
+  const src = actx.createBufferSource(); src.buffer = makeToneBuffer(freq);
+  src.connect(actx.destination); src.start(); return sleep(P.stimDur);
+}
+
+// ----------------------------- stimulus selection -----------------------------
+function makeFreqSet(range, rng){
+  for(;;){
+    const f = Array.from({length:P.nDiscTones},()=>Math.round(range[0]+(range[1]-range[0])*rng()));
+    let ok = true;
+    for(let i=0;i<f.length;i++) for(let j=i+1;j<f.length;j++) if(Math.abs(st(f[i],f[j]))<P.minSemitone) ok=false;
+    if(ok) return f;
+  }
+}
+
+/* Fully balanced 16-trial block: 2 orders x 2 cued positions x {same, same, up, down}.
+   (The original MEG sequence tied change direction to cued position; here direction is
+   crossed with it.)  testType: 0 = same, +1 = higher, -1 = lower. */
+function makeTrials(modality, rng, sets){
+  let combos = [];
+  for (const order of [0,1]) for (const cued of [0,1]) for (const tt of [0,0,1,-1]) combos.push({order,cued,testType:tt});
+  let best = null;
+  for (let tries=0; tries<2000; tries++){
+    const c = shuffle(combos, rng);
+    if (maxRun(c.map(x=>x.testType!==0?1:0))<=P.maxRun && maxRun(c.map(x=>x.cued))<=P.maxRun && maxRun(c.map(x=>x.order))<=P.maxRun){ best=c; break; }
+  }
+  if(!best) best = shuffle(combos, rng);
+  const lows  = shuffle(sets.low, rng), highs = shuffle(sets.high, rng);
+  return best.map((c,i)=>{
+    const t = {modality, ...c};
+    const lo = lows[i%lows.length], hi = highs[(i+2)%highs.length];        // decorrelate register pairing
+    t.stim = c.order===0 ? [lo,hi] : [hi,lo];                              // order 0 = low first
+    t.target = t.stim[c.cued];
+    t.targetRegister = t.target<1000 ? 'low':'high';
+    t.test = +(t.target*(1+P.pctDiff*c.testType)).toFixed(3);              // exact % change (no integer-Hz rounding)
+    return t;
+  });
+}
+
+// ----------------------------- session state -----------------------------
+const S = { rows:[], blocks:[], aborted:false, pauseReq:false, cfg:{}, rng:null, sets:null };
+
+// ----------------------------- UI primitives -----------------------------
+function show(msg, cls, sub){
+  const m=$('msg'); m.className = cls||''; m.textContent = msg||''; $('sub').textContent = sub||'';
+  m.style.display = msg? 'block':'none';
+}
+function showButtons(on){ $('btns').style.display = on? 'flex':'none'; }
+function waitKey(keys){
+  return new Promise(res=>{
+    const h = e=>{ if(keys.includes(e.key)||e.key==='Escape'){ window.removeEventListener('keydown',h); if(e.key==='Escape') abort(); res(e.key); } };
+    window.addEventListener('keydown',h);
+  });
+}
+function abort(){ if(!S.aborted){ S.aborted = true; } }
+
+window.addEventListener('keydown', e=>{
+  if (e.key==='Escape') abort();
+  if (e.key==='p' || e.key==='P') S.pauseReq = true;
+});
+
+function getResponse(){
+  const L = T[S.cfg.lang];
+  return new Promise(res=>{
+    const t0 = now(); let done=false;
+    const finish = (resp, via)=>{ if(done) return; done=true; clearTimeout(to);
+      window.removeEventListener('keydown',kh); $('btnSame').onclick=$('btnDiff').onclick=null; res({resp, rt: now()-t0, via}); };
+    const kh = e=>{
+      if(e.key==='1'||e.key==='ArrowLeft')  finish('same','key');
+      else if(e.key==='2'||e.key==='ArrowRight') finish('diff','key');
+      else if(e.key==='Escape') finish('abort','key');
+    };
+    window.addEventListener('keydown',kh);
+    $('btnSame').onclick = ()=>finish('same','click');
+    $('btnDiff').onclick = ()=>finish('diff','click');
+    const to = setTimeout(()=>finish('none','timeout'), P.maxRespMs);
+  });
+}
+
+// ----------------------------- one trial -----------------------------
+async function runTrial(t, blk, trialNo, isPractice){
+  const L = T[S.cfg.lang], aud = t.modality==='aud';
+  const rec = {
+    participant:S.cfg.pid, group:S.cfg.group, session:S.cfg.session, response_mode:S.cfg.rmode, hand:S.cfg.hand,
+    block_idx:blk.idx, block:blk.name, practice:isPractice?1:0, modality:t.modality, delay_ms:blk.delay, suppression:blk.suppress?1:0,
+    trial:trialNo, order:t.order, cued_pos:t.cued+1,   // order 0 = lower-pitch tone first (auditory)
+    stim1:t.stim[0], stim2:t.stim[1], target:t.target, target_register:t.targetRegister,
+    test:t.test, test_type:t.testType, correct_answer:t.testType===0?'same':'diff',
+  };
+  const tStart = now();
+  // --- alert
+  show('＊','big'); await sleep(P.alertDur); if(S.aborted) return null;
+  show('＋','big');
+  await sleep(300);
+  // --- encoding
+  const present = async (v, which) => {
+    await playTone(v);
+  };
+  rec.t_enc1 = now()-tStart; await present(t.stim[0]);
+  await sleep(P.isi);
+  rec.t_enc2 = now()-tStart; await present(t.stim[1]);
+  if (S.aborted) return null;
+  // --- cue
+  await sleep(P.preCueGap);
+  show(String(t.cued+1),'big', L.cueAud[t.cued]); rec.t_cue = now()-tStart;
+  await sleep(P.cueDur);
+  // --- retention
+  show('＋','big', blk.suppress? L.retSupp : (blk.delay>=P.delayLong? L.retQuiet : ''));
+  const r0 = now(); rec.t_ret_start = r0 - tStart;
+  const retMs = blk.delay;
+  while (now()-r0 < retMs && !S.aborted) await sleep(50);
+  rec.retention_actual_ms = Math.round(now()-r0);
+  show('＋','big');
+  if (S.aborted) return null;
+  // --- test pair (two identical stimuli)
+  rec.t_test1 = now()-tStart; await present(t.test);
+  await sleep(P.isi);
+  rec.t_test2 = now()-tStart; await present(t.test);
+  // --- response
+  show(L.ask,'', ''); $('btnSame').innerHTML = L.same+'<small>1 / ←</small>'; $('btnDiff').innerHTML = L.diff+'<small>2 / →</small>';
+  showButtons(true);
+  const r = await getResponse();
+  showButtons(false);
+  rec.response = r.resp; rec.rt_ms = Math.round(r.rt); rec.resp_via = r.via;
+  rec.correct = (r.resp==='none'||r.resp==='abort')? '' : (r.resp===rec.correct_answer?1:0);
+  if (r.resp==='abort'){ S.aborted = true; return rec; }
+  // --- feedback
+  if (S.cfg.fb || isPractice){
+    const fbTxt = rec.correct===1? L.correct : rec.correct===0? L.wrong : L.none;
+    show(fbTxt,'', ''); await sleep(P.feedbackMs);
+  }
+  // --- ITI
+  show('＋','big');
+  const iti = isPractice? 1500 : P.itiMs[Math.floor(S.rng()*P.itiMs.length)];
+  const elapsedAfterResp = 0;
+  await sleep(iti - elapsedAfterResp);
+  rec.iti_ms = iti;
+  // --- pause on request (between trials only)
+  if (S.pauseReq && !S.aborted){
+    show(L.pause,'small'); await waitKey([' ']); S.pauseReq=false; show('＋','big'); await sleep(800);
+  }
+  return rec;
+}
+
+// ----------------------------- blocks -----------------------------
+function blockList(cfg){
+  const A = [{name:'pitch_short', modality:'aud', delay:P.delayShort}];
+  const B = [{name:'pitch_3s',   modality:'aud', delay:P.delayLong}];
+  const Bs = cfg.supp? [{name:'pitch_3s_suppression', modality:'aud', delay:P.delayLong, suppress:true}] : [];
+  const list = cfg.order==='A' ? [...A,...B,...Bs] : [...B,...Bs,...A];
+  list.forEach((b,i)=>b.idx=i+1);
+  return list;
+}
+
+async function instructions(blk){
+  const L = T[S.cfg.lang];
+  const txt = L.instrAud;
+  const extra = blk.suppress? L.instrSupp : (blk.delay>=P.delayLong? L.instrAud12 : L.instrAud1);
+  show(txt, 'small', extra + '\n\n' + L.answerHelp + '\n\n' + L.start);
+  await waitKey([' ']);
+}
+
+async function runBlock(blk, trials, isPractice){
+  const L = T[S.cfg.lang];
+  for (let i=0;i<trials.length && !S.aborted;i++){
+    const rec = await runTrial(trials[i], blk, i+1, isPractice);
+    if (rec){ S.rows.push(rec); try{ localStorage.setItem('awm_backup_'+S.cfg.pid, JSON.stringify(S.rows)); }catch(e){} }
+  }
+}
+
+async function runSession(){
+  const cfg = S.cfg, L = T[cfg.lang];
+  S.rng = mulberry32(hashSeed(cfg.pid+'|'+cfg.session));
+  S.sets = { low: makeFreqSet(P.lowRange, S.rng), high: makeFreqSet(P.highRange, S.rng) };
+  cfg.freqSets = JSON.stringify(S.sets);
+  const blocks = blockList(cfg);
+  const practiced = {aud:false};
+
+  for (const blk of blocks){
+    if (S.aborted) break;
+    await instructions(blk);
+    if (S.aborted) break;
+    if (!practiced[blk.modality]){
+      practiced[blk.modality] = true;
+      show(L.practiceIntro,'small'); await sleep(2500);
+      const all = makeTrials(blk.modality, S.rng, S.sets);
+      const sames = all.filter(t=>t.testType===0);
+      const pick = [sames[0], all.find(t=>t.testType===1), sames[1], all.find(t=>t.testType===-1)];
+      const pblk = {idx:0, name:'practice_'+blk.modality, modality:blk.modality, delay:P.delayPractice};
+      await runBlock(pblk, pick, true);
+      if (S.aborted) break;
+      show(L.practiceDone,'small', L.start); await waitKey([' ']);
+    }
+    const trials = makeTrials(blk.modality, S.rng, S.sets);
+    await runBlock(blk, trials, false);
+    if (S.aborted) break;
+    if (blk !== blocks[blocks.length-1]){
+      show(L.blockEnd + '\n' + L.pause, 'small', L.start); await waitKey([' ']);
+    }
+  }
+  finish();
+}
+
+// ----------------------------- output -----------------------------
+function dprime(rows){
+  const real = rows.filter(r=>r.correct!=='');
+  const diff = real.filter(r=>r.correct_answer==='diff'), same = real.filter(r=>r.correct_answer==='same');
+  const hits = diff.filter(r=>r.response==='diff').length, fas = same.filter(r=>r.response==='diff').length;
+  const z = p => { // inverse normal (Acklam-style via erfinv approximation)
+    const a=0.147, x=2*p-1, ln=Math.log(1-x*x), t=2/(Math.PI*a)+ln/2;
+    return Math.SQRT2*Math.sign(x)*Math.sqrt(Math.sqrt(t*t-ln/a)-t); };
+  const H=(hits+0.5)/(diff.length+1), F=(fas+0.5)/(same.length+1);
+  return {n:real.length, omitted:rows.length-real.length, pc:real.length? real.filter(r=>r.correct===1).length/real.length : NaN,
+          hit:diff.length?hits/diff.length:NaN, fa:same.length?fas/same.length:NaN, dprime:z(H)-z(F),
+          rt: (()=>{ const v=real.map(r=>r.rt_ms).sort((a,b)=>a-b); return v.length? v[Math.floor(v.length/2)]:NaN; })()};
+}
+function summaryText(){
+  const names = [...new Set(S.rows.filter(r=>!r.practice).map(r=>r.block))];
+  let s = `Participant ${S.cfg.pid} (${S.cfg.group})  session ${S.cfg.session}\n` +
+          'block'.padEnd(26)+'n  omit  %corr   hit    FA    dprime  medRT(ms)\n';
+  for (const b of names){
+    const d = dprime(S.rows.filter(r=>r.block===b&&!r.practice));
+    s += b.padEnd(26)+String(d.n).padEnd(3)+String(d.omitted).padEnd(6)+(d.pc*100).toFixed(0).padEnd(7)+d.hit.toFixed(2).padEnd(7)+d.fa.toFixed(2).padEnd(6)+d.dprime.toFixed(2).padEnd(8)+Math.round(d.rt)+'\n';
+  }
+  return s;
+}
+function toCSV(){
+  const cols = ['participant','group','session','response_mode','hand','block_idx','block','practice','modality','delay_ms','suppression','trial',
+    'order','cued_pos','stim1','stim2','target','target_register','test','test_type','correct_answer','response','correct','rt_ms','resp_via',
+    'retention_actual_ms','iti_ms','t_enc1','t_enc2','t_cue','t_ret_start','t_test1','t_test2'];
+  const esc = v => (v===undefined||v===null)? '' : /[",\n]/.test(String(v))? '"'+String(v).replace(/"/g,'""')+'"' : String(v);
+  const meta = [`# phon=${S.cfg.phon}; master_volume=${S.cfg.vol}; order=${S.cfg.order}; suppression_block=${S.cfg.supp}; feedback=${S.cfg.fb}; pct_diff=${P.pctDiff}; freq_sets=${S.cfg.freqSets}; ua=${navigator.userAgent}; notes=${S.cfg.notes}`];
+  return meta.concat([cols.join(',')], S.rows.map(r=>cols.map(c=>esc(r[c])).join(','))).join('\n');
+}
+function download(){
+  const blob = new Blob(['﻿'+toCSV()],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  a.download = `AWM_${S.cfg.pid}_s${S.cfg.session}_${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+function finish(){
+  const L = T[S.cfg.lang];
+  showButtons(false);
+  show(S.aborted? '' : L.thanks, 'small', '');
+  $('summary').textContent = summaryText();
+  $('endbtns').style.display = 'flex';
+  $('dl').onclick = download; $('showsum').onclick = ()=>{ $('summary').style.display = 'block'; };
+  download();
+}
+
+// ----------------------------- setup wiring -----------------------------
+$('vol').addEventListener('input', ()=>{ masterVol = parseFloat($('vol').value); });
+$('testTone').addEventListener('click', async ()=>{
+  ensureAudio(); masterVol = parseFloat($('vol').value); SPL = iso226(parseFloat($('phon').value)||60);
+  for (const f of [1000, 400, 2400]){ await playTone(f); await sleep(300); }
+});
+$('start').addEventListener('click', ()=>{
+  const pid = $('pid').value.trim();
+  if(!pid){ alert('Enter participant ID'); return; }
+  ensureAudio();
+  masterVol = parseFloat($('vol').value);
+  SPL = iso226(parseFloat($('phon').value)||60);
+  S.cfg = { pid, group:$('group').value, session:$('session').value, lang:$('lang').value, rmode:$('rmode').value,
+            hand:$('hand').value, order:$('order').value, supp:$('supp').checked, fb:$('fb').checked,
+            phon:$('phon').value, vol:masterVol, notes:$('notes').value.replace(/[\r\n,]/g,' ') };
+  document.documentElement.lang = S.cfg.lang;
+  $('setup').style.display='none'; $('stage').style.display='flex';
+  document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(()=>{});
+  runSession();
+});
+</script>
+</body>
+</html>
