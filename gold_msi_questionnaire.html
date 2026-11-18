@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold-MSI Questionnaire</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --dim:#556; --line:#cfd6df; --accent:#1c5fbf; --sel:#dbe9ff; --btn:#f3f5f8; }
+  @media (prefers-color-scheme: dark){ :root { --bg:#111418; --fg:#f2f4f7; --dim:#a7b0bd; --line:#3a4350; --accent:#6aa8ff; --sel:#1d3556; --btn:#1b2028; } }
+  html,body { margin:0; background:var(--bg); color:var(--fg); font-family:"Yu Gothic","Meiryo",system-ui,sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:20px 16px 40px; box-sizing:border-box; }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:var(--dim); font-size:14px; margin:0 0 16px; }
+  .row { display:flex; gap:12px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+  .row label { min-width:150px; color:var(--dim); font-size:14px; }
+  input[type=text],input[type=number],select { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-size:16px; }
+  button { font:inherit; cursor:pointer; }
+  .go { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:12px 26px; font-size:18px; }
+  .go:disabled { opacity:.35; cursor:default; }
+  .ghost { background:transparent; color:var(--dim); border:1px solid var(--line); border-radius:10px; padding:12px 20px; font-size:16px; }
+  #bar { height:6px; background:var(--line); border-radius:3px; margin:0 0 22px; } #bar i { display:block; height:100%; background:var(--accent); border-radius:3px; width:0; }
+  #count { color:var(--dim); font-size:14px; margin-bottom:6px; }
+  #q { font-size:clamp(22px,4.4vw,34px); line-height:1.55; margin:6px 0 22px; }
+  #q u { display:inline-block; min-width:3.5em; border-bottom:2px solid var(--fg); text-decoration:none; }
+  #hint { color:var(--dim); font-size:15px; margin:-12px 0 18px; }
+  #opts { display:grid; gap:10px; }
+  #opts.likert { grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); }
+  #opts.list { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
+  .opt { background:var(--btn); color:var(--fg); border:2px solid var(--line); border-radius:12px; padding:14px 8px; font-size:clamp(16px,2.6vw,22px); min-height:64px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; text-align:center; }
+  .opt b { font-size:1.35em; }
+  .opt small { font-size:.62em; color:var(--dim); line-height:1.25; }
+  .opt.sel { background:var(--sel); border-color:var(--accent); }
+  #nav { display:flex; justify-content:space-between; margin-top:26px; gap:12px; }
+  #end h2 { margin-top:0; } #sum { white-space:pre; font-family:Consolas,monospace; font-size:14px; display:none; margin-top:14px; }
+  .note { color:var(--dim); font-size:13px; margin-top:16px; }
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ================= experimenter setup ================= -->
+<div id="setup">
+  <h1>Goldsmiths Musical Sophistication Index (Gold-MSI) / ゴールドスミス音楽洗練指標</h1>
+  <p class="sub">Self-report inventory v1.0 (English) and Japanese version MSI-J (Sadakata et al., 2022/2023). Preceded by one additional question on perfect pitch. Works offline.</p>
+  <div class="row"><label>Participant ID</label><input id="pid" type="text" placeholder="same ID as the AWM task, e.g. CB01"></div>
+  <div class="row"><label>Group</label><select id="group"><option>patient</option><option>control</option></select></div>
+  <div class="row"><label>Session</label><input id="session" type="number" value="1" min="1" style="width:80px"></div>
+  <div class="row"><label>Language / 言語</label><select id="lang"><option value="ja">日本語</option><option value="en">English</option></select></div>
+  <div class="row"><button class="go" id="start" type="button">Start</button></div>
+  <p class="note">Participant: choose an answer by touch, mouse or the number keys (1–7), then press Next (or Enter). Back = ←.
+  If the patient cannot use the screen, read the item aloud and tap their answer for them; record this in your notes.
+  The CSV downloads automatically at the end; a browser backup is saved after every answer.</p>
+</div>
+
+<!-- ================= questionnaire ================= -->
+<div id="quest" hidden>
+  <div id="count"></div>
+  <div id="bar"><i></i></div>
+  <div id="q"></div>
+  <div id="hint"></div>
+  <div id="opts"></div>
+  <div id="nav">
+    <button class="ghost" id="back" type="button"></button>
+    <button class="go" id="next" type="button" disabled></button>
+  </div>
+</div>
+
+<!-- ================= end ================= -->
+<div id="end" hidden>
+  <h2 id="thanks"></h2>
+  <div class="row"><button class="go" id="dl" type="button">Download CSV</button>
+  <button class="ghost" id="showsum" type="button">Experimenter: show scores</button></div>
+  <div id="sum"></div>
+</div>
+
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Goldsmiths Musical Sophistication Index (Gold-MSI) self-report inventory
+   English: v1.0 (11 Oct 2012), Müllensiefen et al. (2014) PLoS ONE 9(2): e89642.
+   Japanese: MSI-J (July 2022), Sadakata, Yamaguchi, Ohsawa, Matsubara, Terasawa,
+             von Schnehen, Müllensiefen & Sekiyama (2022/2023) Musicae Scientiae 27(3).
+   Scoring: Gold-MSI manual / Müllensiefen et al. 2014, File S1 (item membership below).
+   The perfect-pitch question (item PP) is an ADDITIONAL study question, not part of the Gold-MSI.
+   ===================================================================== */
+
+// ---------------- Likert response labels (1–7) ----------------
+const SCALE = {
+  en: ['Completely Disagree','Strongly Disagree','Disagree','Neither Agree nor Disagree','Agree','Strongly Agree','Completely Agree'],
+  ja: ['全くあてはまらない','ほとんどあてはまらない','あまりあてはまらない','どちらでもない','わりとあてはまる','よくあてはまる','実によくあてはまる'],
+};
+
+// ---------------- items 1–31 (7-point agreement) ----------------
+const EN_LIKERT = {
+  1:"I spend a lot of my free time doing music-related activities.",
+  2:"I sometimes choose music that can trigger shivers down my spine.",
+  3:"I enjoy writing about music, for example on blogs and forums.",
+  4:"If somebody starts singing a song I don't know, I can usually join in.",
+  5:"I am able to judge whether someone is a good singer or not.",
+  6:"I usually know when I'm hearing a song for the first time.",
+  7:"I can sing or play music from memory.",
+  8:"I'm intrigued by musical styles I'm not familiar with and want to find out more.",
+  9:"Pieces of music rarely evoke emotions for me.",
+  10:"I am able to hit the right notes when I sing along with a recording.",
+  11:"I find it difficult to spot mistakes in a performance of a song even if I know the tune.",
+  12:"I can compare and discuss differences between two performances or versions of the same piece of music.",
+  13:"I have trouble recognizing a familiar song when played in a different way or by a different performer.",
+  14:"I have never been complimented for my talents as a musical performer.",
+  15:"I often read or search the internet for things related to music.",
+  16:"I often pick certain music to motivate or excite me.",
+  17:"I am not able to sing in harmony when somebody is singing a familiar tune.",
+  18:"I can tell when people sing or play out of time with the beat.",
+  19:"I am able to identify what is special about a given musical piece.",
+  20:"I am able to talk about the emotions that a piece of music evokes for me.",
+  21:"I don't spend much of my disposable income on music.",
+  22:"I can tell when people sing or play out of tune.",
+  23:"When I sing, I have no idea whether I'm in tune or not.",
+  24:"Music is kind of an addiction for me - I couldn't live without it.",
+  25:"I don't like singing in public because I'm afraid that I would sing wrong notes.",
+  26:"When I hear a piece of music I can usually identify its genre.",
+  27:"I would not consider myself a musician.",
+  28:"I keep track of new music that I come across (e.g. new artists or recordings).",
+  29:"After hearing a new song two or three times, I can usually sing it by myself.",
+  30:"I only need to hear a new tune once and I can sing it back hours later.",
+  31:"Music can evoke my memories of past people and places.",
+};
+// ---------------- items 32–38 (choose one of seven ranges) ----------------
+const EN_MULTI = {
+  32:{stem:"I engaged in regular, daily practice of a musical instrument (including voice) for ___ years.", opts:['0','1','2','3','4-5','6-9','10 or more']},
+  33:{stem:"At the peak of my interest, I practiced ___ hours per day on my primary instrument.", opts:['0','0.5','1','1.5','2','3-4','5 or more']},
+  34:{stem:"I have attended ___ live music events as an audience member in the past twelve months.", opts:['0','1','2','3','4-6','7-10','11 or more']},
+  35:{stem:"I have had formal training in music theory for ___ years.", opts:['0','0.5','1','2','3','4-6','7 or more']},
+  36:{stem:"I have had ___ years of formal training on a musical instrument (including voice) during my lifetime.", opts:['0','0.5','1','2','3-5','6-9','10 or more']},
+  37:{stem:"I can play ___ musical instruments.", opts:['0','1','2','3','4','5','6 or more']},
+  38:{stem:"I listen attentively to music for ___ per day.", opts:['0-15 min','15-30 min','30-60 min','60-90 min','2 hrs','2-3 hrs','4 hrs or more']},
+};
+// ---------------- Japanese (extracted programmatically from MSI-J, July 2022) ----------------
+const JA = {
+ "likert": {
+  "1": "自由時間のほとんどを、音楽に関することに使う",
+  "2": "ゾクゾクするような（もしくは鳥肌が立つような）音楽を聴きたいと思うことがある",
+  "3": "インターネットのブログや掲示板に音楽に関する情報を書くのが楽しい",
+  "4": "知らないメロディーを誰かが歌い始めた時、たいていの場合は一緒に歌うことができる",
+  "5": "歌っている人がうまいかどうか、的確に判断ができる",
+  "6": "聴こえてきた曲が初めて聴く曲かどうかがすぐにわかる",
+  "7": "暗譜で演奏することができる（歌を含む）",
+  "8": "馴染みのない音楽を耳にすると、それについてもっと知りたいと思う",
+  "9": "音楽を聴いてもほとんど感情が揺さぶられない",
+  "10": "知っている曲のメロディーにぴったり合わせて歌うことができる",
+  "11": "知っている曲をアーティストがどこか間違って演奏しても、なかなか気づけない",
+  "12": "同じ曲の違う演奏を聴いたとき、その違いについて比べたり話すことができる",
+  "13": "よく知っている曲でも、いつもと違うやり方で演奏されたり別の人が演奏していると、その曲だとわからないことがある",
+  "14": "自分の音楽的才能や音楽演奏を褒められたことがない",
+  "15": "よく、音楽に関連した情報をインターネットで検索したり読んだりする",
+  "16": "やる気を出すために、特定の音楽をかけることがよくある",
+  "17": "誰かが私の知っている曲を歌っていても、ハモるのはとても難しい",
+  "18": "他の人の歌や演奏が本来のビートからずれていることがわかる",
+  "19": "聴こえてきた曲の特徴を説明することができる",
+  "20": "音楽を聴いたときに湧き上がる感情について話すことができる",
+  "21": "自由に使えるお金を、音楽のためには使わない",
+  "22": "他の人の歌や、演奏の音が外れているかどうかわかる",
+  "23": "自分が歌っているときに、音の高さがあっているかどうか自信がない",
+  "24": "音楽は私にとって一種の中毒で、音楽なしでは生きていけない",
+  "25": "音を外してしまうかもしれないので、人前で歌うのは嫌いだ",
+  "26": "大抵の場合は、聴いた音楽のジャンルがわかる",
+  "27": "私は音楽家ではない",
+  "28": "新しいアーティストや曲の流行を知っている",
+  "29": "知らない歌でも２、３回聴けば歌うことができる",
+  "30": "知らない曲でも一回聴けば、数時間あとでも歌うことができる",
+  "31": "音楽を聴いて、特定の人や場所を思い出すことがある"
+ },
+ "multi": {
+  "32": {
+   "stem": "私はここ＿＿年間、日常的・定期的に楽器（歌を含む）の練習をしている",
+   "opts": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4-5",
+    "6-9",
+    "10 かそれ以上"
+   ]
+  },
+  "33": {
+   "stem": "興味が最も高かった時期には、メインの楽器（歌を含む）を一日に＿＿時間練習した",
+   "opts": [
+    "0",
+    "0.5",
+    "1",
+    "1.5",
+    "2",
+    "3-4",
+    "5 かそれ以上"
+   ]
+  },
+  "34": {
+   "stem": "この１２ヶ月の間に＿＿回の生演奏イベントを聴きに行った",
+   "opts": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4-6",
+    "7-10",
+    "11 かそれ以上"
+   ]
+  },
+  "35": {
+   "stem": "音楽理論の訓練を＿＿年間受けた",
+   "opts": [
+    "0",
+    "0.5",
+    "1",
+    "2",
+    "3",
+    "4-6",
+    "7 かそれ以上"
+   ]
+  },
+  "36": {
+   "stem": "これまでに楽器（歌も含む）の正式な訓練を＿＿年間受けた",
+   "opts": [
+    "0",
+    "0.5",
+    "1",
+    "2",
+    "3-5",
+    "6-9",
+    "10 かそれ以上"
+   ]
+  },
+  "37": {
+   "stem": "私は＿＿種類の楽器を演奏できる",
+   "opts": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6 かそれ以上"
+   ]
+  },
+  "38": {
+   "stem": "一日のうち、集中して音楽を聴く時間の長さはたいてい＿＿分（時間）である",
+   "opts": [
+    "0-15 分",
+    "15-30 分",
+    "30-60 分",
+    "60-90 分",
+    "2 時間",
+    "2-3 時間",
+    "4 時間 かそれ以上"
+   ]
+  }
+ },
+ "inst_stem": "私がもっとも得意な楽器は＿＿である",
+ "inst_opts": [
+  "声楽",
+  "ピアノ",
+  "ギター",
+  "ドラム",
+  "フルート",
+  "オーボエ",
+  "クラリネット",
+  "ファゴット",
+  "トランペット",
+  "トロンボーン",
+  "テューバ",
+  "サクソフォン",
+  "ヴァイオリン",
+  "チェロ",
+  "ヴィオラ",
+  "コントラバス",
+  "ハープ",
+  "その他",
+  "該当しない"
+ ]
+};
+
+// item 39 (instrument played best): English list follows the order of the Japanese form
+const INST = {
+  en:{stem:"The instrument I play best (including voice) is ___", opts:['Voice','Piano','Guitar','Drums','Flute','Oboe','Clarinet','Bassoon','Trumpet','Trombone','Tuba','Saxophone','Violin','Cello','Viola','Double bass','Harp','Other','Not applicable']},
+  ja:{stem:JA.inst_stem, opts:JA.inst_opts},
+};
+
+// ---------------- extra study question: perfect pitch (NOT part of Gold-MSI) ----------------
+const PP = {
+  en:{ q:"Do you have perfect pitch (absolute pitch)?\n\nThat is, can you name the pitch of a musical tone (for example, say \"that is an A\") without first hearing a reference tone?",
+       opts:['Yes','No','Not sure'],
+       q2:"How do you know?", opts2:['I have been formally tested','A music teacher or another musician told me','I found it out myself','Other'] },
+  ja:{ q:"あなたは絶対音感をお持ちですか？\n\n（基準となる音を聞かなくても、音の高さを、たとえば「それはラの音です」のように言い当てられる能力）",
+       opts:['はい','いいえ','わからない'],
+       q2:"どのようにそう判断されましたか？", opts2:['検査を受けたことがある','音楽の先生など、音楽家に言われた','自分で気づいた','その他'] },
+};
+
+// ---------------- demographics (as on the Gold-MSI forms; name/e-mail/address omitted) ----------------
+const DEMO = {
+  genre:{ en:{q:"What is the musical genre you mainly listen to?", opts:['Rock/Pop','Jazz','Classical Music']},
+          ja:{q:"最もよく聴くジャンルの音楽（一つだけ選んでください）", opts:['ロック・ポップス','ジャズ','クラシック']} },
+  gender:{ en:{q:"Gender", opts:['Female','Male','Other']}, ja:{q:"性別", opts:['女性','男性','それ以外']} },
+  age:{ en:{q:"Your age (years)"}, ja:{q:"年齢（歳）"} },
+};
+
+// ---------------- UI strings ----------------
+const UI = {
+  en:{next:'Next', back:'Back', finish:'Finish', of:' / ', thanks:'Thank you. That is the end of the questionnaire.', pick:'Choose one answer.', ageHint:'Type your age, then press Next.', unit:{32:'years',33:'hours per day',34:'events',35:'years',36:'years',37:'instruments',38:'per day'}},
+  ja:{next:'次へ', back:'戻る', finish:'終了', of:' / ', thanks:'ありがとうございました。質問は以上です。', pick:'あてはまるものを一つ選んでください。', ageHint:'年齢を入力して「次へ」を押してください。', unit:{}},
+};
+
+// ---------------- scoring (Müllensiefen et al. 2014, File S1) ----------------
+const REVERSE = [9,11,13,14,17,21,23,25,27];                     // scored 8 - x
+const SUBSCALES = {
+  AE:[1,3,8,15,21,24,28,34,38],                                  // Active Engagement (9)
+  PA:[5,6,11,12,13,18,22,23,26],                                 // Perceptual Abilities (9)
+  MT:[14,27,32,33,35,36,37],                                     // Musical Training (7)
+  SA:[4,7,10,17,25,29,30],                                       // Singing Abilities (7)
+  EM:[2,9,16,19,20,31],                                          // Emotions (6)
+  GS:[1,3,7,10,12,14,15,17,19,23,24,25,27,29,30,32,33,37],       // General Musical Sophistication (18)
+};
+
+// ---------------- build the screen sequence ----------------
+function buildScreens(lang){
+  const sc = [];
+  sc.push({id:'PP', kind:'list', q:PP[lang].q, opts:PP[lang].opts, field:'perfect_pitch'});
+  sc.push({id:'PP2', kind:'list', q:PP[lang].q2, opts:PP[lang].opts2, field:'perfect_pitch_basis', onlyIf:a=>a.PP===1||a.PP===3});   // yes / not sure
+  for (let n=1;n<=31;n++) sc.push({id:'Q'+n, n, kind:'likert', q:(lang==='en'?EN_LIKERT[n]:JA.likert[n]), field:'q'+String(n).padStart(2,'0')});
+  for (let n=32;n<=38;n++){
+    const m = lang==='en'? EN_MULTI[n] : JA.multi[n];
+    sc.push({id:'Q'+n, n, kind:'list', q:m.stem, opts:m.opts, field:'q'+n, blank:true});
+  }
+  sc.push({id:'Q39', n:39, kind:'list', q:INST[lang].stem, opts:INST[lang].opts, field:'q39', blank:true});
+  sc.push({id:'GENRE', kind:'list', q:DEMO.genre[lang].q, opts:DEMO.genre[lang].opts, field:'genre'});
+  sc.push({id:'AGE', kind:'age', q:DEMO.age[lang].q, field:'age'});
+  sc.push({id:'GENDER', kind:'list', q:DEMO.gender[lang].q, opts:DEMO.gender[lang].opts, field:'gender'});
+  return sc;
+}
+
+// ---------------- state ----------------
+const $ = id => document.getElementById(id);
+let cfg = {}, screens = [], idx = 0, ans = {}, hist = [];
+
+function visibleScreens(){ return screens.filter(s=>!s.onlyIf || s.onlyIf(ans)); }
+
+function render(){
+  const L = UI[cfg.lang], vis = visibleScreens(), s = screens[idx];
+  const pos = vis.indexOf(s);
+  $('count').textContent = (pos+1) + L.of + vis.length;
+  $('bar').firstElementChild.style.width = (100*pos/vis.length)+'%';
+  const q = $('q'); q.textContent = '';
+  const parts = s.q.split(/___|＿＿/);
+  if (s.blank && parts.length>1){
+    parts.forEach((t,i)=>{ q.appendChild(document.createTextNode(t)); if(i<parts.length-1){ const u=document.createElement('u'); u.textContent=' '; q.appendChild(u);} });
+  } else {
+    s.q.split('\n').forEach((t,i)=>{ if(i) q.appendChild(document.createElement('br')); q.appendChild(document.createTextNode(t)); });
+  }
+  $('hint').textContent = (s.kind==='age') ? L.ageHint : '';
+  const o = $('opts'); o.innerHTML = ''; o.className = '';
+  const cur = ans[s.id];
+  if (s.kind==='likert'){
+    o.className='likert';
+    SCALE[cfg.lang].forEach((lab,i)=> o.appendChild(optBtn(i+1, `<b>${i+1}</b><small>${lab}</small>`, cur===i+1)));
+  } else if (s.kind==='list'){
+    o.className='list';
+    s.opts.forEach((lab,i)=> o.appendChild(optBtn(i+1, (s.n>=32&&s.n<=38? `<b>${i+1}</b>`:'') + `<span>${esc(lab)}</span>`, cur===i+1)));
+  } else if (s.kind==='age'){
+    const inp = document.createElement('input'); inp.type='number'; inp.min=0; inp.max=120; inp.id='ageIn';
+    inp.style.cssText='font-size:30px;width:140px;padding:12px'; inp.value = cur||'';
+    inp.oninput = ()=>{ const v=parseInt(inp.value,10); ans[s.id] = (v>=0&&v<=120)? v : undefined; $('next').disabled = ans[s.id]===undefined; };
+    o.appendChild(inp); setTimeout(()=>inp.focus(),50);
+  }
+  $('back').textContent = L.back; $('back').disabled = hist.length===0;
+  $('next').textContent = (pos===vis.length-1)? L.finish : L.next;
+  $('next').disabled = ans[s.id]===undefined;
+}
+const esc = t => String(t).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function optBtn(val, html, selected){
+  const b = document.createElement('button'); b.type='button'; b.className='opt'+(selected?' sel':''); b.innerHTML = html;
+  b.onclick = ()=>choose(val); return b;
+}
+function choose(val){
+  const s = screens[idx]; ans[s.id] = val; save(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  [...$('opts').children].forEach((b,i)=>b.classList.toggle('sel', i+1===val));
+  $('next').disabled = false;
+}
+function goNext(){
+  const s = screens[idx]; if (ans[s.id]===undefined) return;
+  hist.push(idx);
+  let j = idx+1; while (j<screens.length && screens[j].onlyIf && !screens[j].onlyIf(ans)) j++;
+  if (j>=screens.length) return finish();
+  idx = j; render();
+}
+function goBack(){ if(!hist.length) return; idx = hist.pop(); render(); }
+
+window.addEventListener('keydown', e=>{
+  if ($('quest').hidden) return;
+  const s = screens[idx];
+  if (e.target.tagName==='INPUT'){ if(e.key==='Enter') goNext(); return; }
+  if (/^[1-7]$/.test(e.key)){
+    const n = +e.key, max = s.kind==='likert'? 7 : (s.opts? s.opts.length : 0);
+    if (s.kind!=='age' && n<=max) choose(n);
+  } else if (e.key==='Enter'){ e.preventDefault(); goNext(); }
+  else if (e.key==='ArrowLeft' || e.key==='Backspace'){ goBack(); }
+});
+
+// ---------------- results ----------------
+function optLabel(id){   // text of the chosen option
+  const s = screens.find(x=>x.id===id); if(!s || ans[id]===undefined) return '';
+  return s.kind==='likert'? SCALE[cfg.lang][ans[id]-1] : (s.opts? s.opts[ans[id]-1] : ans[id]);
+}
+function score(){
+  const val = n => { let v = ans['Q'+n]; if (v===undefined) return NaN; return REVERSE.includes(n)? 8-v : v; };
+  const out = {};
+  for (const k in SUBSCALES) out[k] = SUBSCALES[k].reduce((a,n)=>a+val(n),0);
+  return out;
+}
+function row(){
+  const r = {participant:cfg.pid, group:cfg.group, session:cfg.session, language:cfg.lang, timestamp:new Date().toISOString(),
+             perfect_pitch: ans.PP===1?'yes':ans.PP===2?'no':ans.PP===3?'not_sure':'',
+             perfect_pitch_basis: ans.PP2? optLabel('PP2') : ''};
+  for (let n=1;n<=39;n++){
+    const id='Q'+n, key = 'q'+String(n).padStart(2,'0');
+    r[key] = ans[id]===undefined? '' : ans[id];
+    if (n>=32) r[key+'_label'] = optLabel(id);
+  }
+  r.genre = optLabel('GENRE'); r.age = ans.AGE===undefined?'':ans.AGE; r.gender = optLabel('GENDER');
+  const sc = score();
+  r.AE=sc.AE; r.PA=sc.PA; r.MT=sc.MT; r.SA=sc.SA; r.EM=sc.EM; r.GS=sc.GS;
+  return r;
+}
+function toCSV(){
+  const r = row(), cols = Object.keys(r);
+  const esc = v => /[",\n]/.test(String(v))? '"'+String(v).replace(/"/g,'""')+'"' : String(v);
+  return ['# Gold-MSI v1.0 (EN) / MSI-J (JA). Items 1-38 raw responses (1-7; items 32-38 = option position); AE PA MT SA EM GS = sums after reverse-scoring items 9,11,13,14,17,21,23,25,27 (8-x). perfect_pitch is an additional non-Gold-MSI question.',
+          cols.join(','), cols.map(c=>esc(r[c])).join(',')].join('\n');
+}
+function save(){ try{ localStorage.setItem('goldmsi_backup_'+cfg.pid, JSON.stringify({cfg, ans})); }catch(e){} }
+function download(){
+  const blob = new Blob(['﻿'+toCSV()],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `GoldMSI_${cfg.pid}_s${cfg.session}_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function finish(){
+  $('quest').hidden = true; $('end').hidden = false;
+  $('thanks').textContent = UI[cfg.lang].thanks;
+  const r = row();
+  $('sum').textContent = `Participant ${r.participant} (${r.group}), session ${r.session}\nPerfect pitch: ${r.perfect_pitch}${r.perfect_pitch_basis? ' ('+r.perfect_pitch_basis+')':''}\n\n` +
+    `Active Engagement          ${r.AE}  (9-63)\nPerceptual Abilities       ${r.PA}  (9-63)\nMusical Training           ${r.MT}  (7-49)\nSinging Abilities          ${r.SA}  (7-49)\nEmotions                   ${r.EM}  (6-42)\nGeneral Sophistication     ${r.GS}  (18-126)\n`;
+  $('dl').onclick = download; $('showsum').onclick = ()=>{ $('sum').style.display='block'; };
+  download();
+}
+
+// ---------------- wiring ----------------
+$('start').onclick = ()=>{
+  const pid = $('pid').value.trim(); if(!pid){ alert('Enter participant ID'); return; }
+  cfg = {pid, group:$('group').value, session:$('session').value, lang:$('lang').value};
+  document.documentElement.lang = cfg.lang;
+  screens = buildScreens(cfg.lang); idx = 0; ans = {}; hist = [];
+  $('setup').hidden = true; $('quest').hidden = false; render();
+};
+$('next').onclick = goNext; $('back').onclick = goBack;
+</script>
+</body>
+</html>
