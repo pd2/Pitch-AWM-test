@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AWM Pitch Task (3 s)</title>
+<title>AWM Pitch Task (3s)</title>
 <style>
   :root { --bg:#000; --fg:#fff; --dim:#9aa; --accent:#4aa3ff; --ok:#3ecf6e; --bad:#ff5d5d; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
@@ -18,16 +18,25 @@
   input[type=range] { width:240px; }
   button { background:var(--accent); color:#001; border:0; border-radius:8px; padding:10px 18px; font-size:16px; cursor:pointer; }
   button.secondary { background:#222; color:var(--fg); border:1px solid #555; }
-  #stage { display:none; position:fixed; inset:0; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
-  #msg { font-size:min(5.2vw,44px); line-height:1.6; max-width:86vw; white-space:pre-line; }
-  #msg.big { font-size:min(14vw,140px); }
-  #msg.small { font-size:min(3.6vw,30px); color:var(--dim); }
-  #sub { font-size:min(3.4vw,30px); color:var(--dim); margin-top:12px; white-space:pre-line; }
+  input[type=text] { max-width:100%; box-sizing:border-box; }
+  /* stage: scrollable on small screens; ::before/::after centre content vertically but collapse when it overflows */
+  #stage { display:none; position:fixed; inset:0; align-items:center; justify-content:flex-start; flex-direction:column; text-align:center;
+           overflow-y:auto; padding:56px 16px 24px; box-sizing:border-box; -webkit-user-select:none; user-select:none; }
+  #stage::before, #stage::after { content:''; flex:1 0 0; }
+  #stage button { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  #msg { font-size:clamp(18px,5.2vw,44px); line-height:1.6; max-width:86vw; white-space:pre-line; }
+  #msg.big { font-size:clamp(64px,14vw,140px); }
+  #msg.small { font-size:clamp(16px,3.6vw,30px); color:var(--dim); }
+  #sub { font-size:clamp(15px,3.4vw,30px); color:var(--dim); margin-top:12px; white-space:pre-line; }
   #btns { display:none; gap:5vw; margin-top:5vh; }
-  #btns button { font-size:min(6vw,52px); padding:3vh 6vw; min-width:26vw; border-radius:16px; color:#fff; }
+  #btns button { font-size:clamp(22px,6vw,52px); padding:3vh 6vw; min-width:34vw; min-height:20vh; border-radius:16px; color:#fff; }
+  #cont { display:none; margin-top:4vh; font-size:clamp(20px,4vw,36px); padding:2.2vh 8vw; border-radius:14px; }
+  #expbar { display:none; position:fixed; top:8px; right:8px; gap:8px; z-index:5; }
+  #expbar button { font-size:14px; padding:8px 12px; opacity:.55; }
+  #expbar button.on { opacity:1; background:#665200; border-color:#cc0; }
   #btnSame { background:#1c5fbf; } #btnDiff { background:#b8541c; }
   #btns small { display:block; font-size:min(2.6vw,22px); opacity:.8; margin-top:4px; }
-  #summary { white-space:pre; font-family:Consolas,monospace; font-size:14px; text-align:left; color:#cfe; margin-top:20px; display:none; }
+  #summary { white-space:pre; max-width:100%; overflow-x:auto; font-family:Consolas,monospace; font-size:14px; text-align:left; color:#cfe; margin-top:20px; display:none; }
   #endbtns { display:none; gap:10px; margin-top:20px; }
   .note { color:var(--dim); font-size:13px; margin-top:18px; }
 </style>
@@ -36,7 +45,7 @@
 
 <!-- ============================ EXPERIMENTER SETUP ============================ -->
 <div id="setup">
-  <h1>Auditory Working Memory (pitch) – patient task</h1>
+  <h1>AWM Pitch Task (3s)</h1>
   <p class="sub">Experimenter screen. Use headphones. Chrome / Edge recommended. Works offline.</p>
 
   <div class="row"><label>Participant ID</label><input id="pid" type="text" placeholder="e.g. CB01 or HC01"></div>
@@ -58,7 +67,7 @@
       <option value="B">B: pitch-3 s → [suppression] → pitch-short (1 s)</option>
     </select></div>
   <div class="row"><label>Add articulatory-suppression block</label><input id="supp" type="checkbox"></div>
-  <div class="row"><label>Trial feedback (as in MEG study)</label><input id="fb" type="checkbox" checked></div>
+  <div class="row"><label>Trial feedback (as in MEG study)</label><input id="fb" type="checkbox"></div>
   <div class="row"><label>Equal-loudness contour (phon)</label><input id="phon" type="number" value="60" min="30" max="90" style="width:80px">
     <span class="note" style="margin:0">MEG study used 52 phon; raise for older patients / ward noise.</span></div>
   <div class="row"><label>Master volume (1 kHz tone)</label>
@@ -68,15 +77,26 @@
   <div class="row"><button id="start" type="button">Start session</button></div>
   <p class="note">
     Keys during the task — Participant: <b>1</b> / ← = SAME, <b>2</b> / → = DIFFERENT (or click / touch the big buttons).
-    Experimenter: <b>P</b> = pause after current trial (Space resumes), <b>Esc</b> = stop &amp; save.
+    Experimenter: <b>Space</b> or the <b>Continue</b> button = next screen, <b>P</b> or <b>⏸</b> (top right) = pause after current trial,
+    <b>Esc</b> or <b>■ Stop</b> (top right) = stop &amp; save.
     Data are downloaded automatically as CSV at the end and are also backed up in the browser after every trial.
+  </p>
+  <p class="note">
+    Phones / tablets: use wired or Bluetooth headphones, turn Do Not Disturb on, and on iPhone/iPad
+    <b>switch the ring/silent switch to ring</b>, because silent mode also silences the task's tones. Play the test tone first to check.
+    The CSV goes to the device's Downloads (Files app on iOS).
   </p>
 </div>
 
 <!-- ============================ PARTICIPANT STAGE ============================ -->
 <div id="stage">
+  <div id="expbar">
+    <button id="pauseBtn" class="secondary" type="button">⏸</button>
+    <button id="stopBtn" class="secondary" type="button">■ Stop</button>
+  </div>
   <div id="msg"></div>
   <div id="sub"></div>
+  <button id="cont" type="button"></button>
   <div id="btns">
     <button id="btnSame" type="button"></button>
     <button id="btnDiff" type="button"></button>
@@ -112,7 +132,7 @@ const P = {
   itiMs: [3250, 3750, 4250],
   nTrials: 16,
   nPractice: 4,
-  pctDiff: 0.01,           // 1 % frequency change (MEG study Thresh_wm was 10 %)
+  pctDiff: 0.03,           // 3 % frequency change, ~0.51 semitone (Thresh_wm: MEG 3 % expt 1 (12 s delay), 1 % expt 2; fMRI 10 %; ECoG 20 %)
   lowRange: [300, 570],    // Hz
   highRange: [2000, 2800], // Hz
   nDiscTones: 6,
@@ -138,6 +158,9 @@ const T = {
     answerHelp:'答え方：　1 または ← ＝ 同じ　　2 または → ＝ 違う\n（画面のボタンを押してもかまいません）',
     startPrompt:'準備ができたら検査者に合図してください。',
     start:'（検査者：スペースキーで開始）',
+    answerHelpTouch:'答え方：画面の「同じ」または「違う」のボタンを押してください。',
+    startTouch:'（検査者：「次へ」を押して開始）',
+    cont:'次へ ▶', stopQ:'検査を中止してデータを保存しますか？',
     blockEnd:'ここまでお疲れさまでした。',
     thanks:'ありがとうございました。\nお疲れさまでした。',
     volTitle:'音量の確認',
@@ -159,6 +182,9 @@ const T = {
     answerHelp:'Answer:  1 or ←  = SAME     2 or →  = DIFFERENT\n(You can also press the big buttons on screen.)',
     startPrompt:'Tell the experimenter when you are ready.',
     start:'(Experimenter: press SPACE to start)',
+    answerHelpTouch:'Answer by tapping the big SAME or DIFFERENT button on screen.',
+    startTouch:'(Experimenter: tap Continue to start)',
+    cont:'Continue ▶', stopQ:'Stop the session and save the data?',
     blockEnd:'Well done so far.',
     thanks:'Thank you.\nThat is the end of the session.',
     volTitle:'Volume check',
@@ -170,6 +196,10 @@ const T = {
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const now = () => performance.now();
+// touch-first device (phone/tablet): show tap wording instead of key wording
+const TOUCH = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || navigator.maxTouchPoints > 0 && !matchMedia('(pointer:fine)').matches;
+const txtStart = L => TOUCH? L.startTouch : L.start;
+const txtHelp  = L => TOUCH? L.answerHelpTouch : L.answerHelp;
 
 function hashSeed(s){ let h = 2166136261>>>0; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h,16777619)>>>0; } return h>>>0; }
 function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
@@ -266,33 +296,52 @@ function show(msg, cls, sub){
   m.style.display = msg? 'block':'none';
 }
 function showButtons(on){ $('btns').style.display = on? 'flex':'none'; }
+// Wait for Space (keyboard) or a tap on the on-screen Continue button.
 function waitKey(keys){
   return new Promise(res=>{
-    const h = e=>{ if(keys.includes(e.key)||e.key==='Escape'){ window.removeEventListener('keydown',h); if(e.key==='Escape') abort(); res(e.key); } };
+    const btn = $('cont'); btn.textContent = T[S.cfg.lang].cont; btn.style.display = 'inline-block';
+    const done = k=>{ window.removeEventListener('keydown',h); btn.onclick = null; btn.style.display = 'none'; btn.blur(); S.wake = null; res(k); };
+    const h = e=>{ if(keys.includes(e.key)||e.key==='Escape'){ e.preventDefault(); if(e.key==='Escape') abort(); done(e.key); } };
     window.addEventListener('keydown',h);
+    btn.onclick = ()=>{ ensureAudio(); done(' '); };     // tap also re-wakes audio (iOS suspends it after screen lock)
+    S.wake = ()=>done('abort');                          // lets the Stop button release a pending wait
   });
 }
-function abort(){ if(!S.aborted){ S.aborted = true; } }
+function abort(){
+  if(!S.aborted){ S.aborted = true; }
+  if (S.wake) S.wake();
+  if (S.cancelResp) S.cancelResp();
+}
+function setPause(on){ S.pauseReq = on; $('pauseBtn').classList.toggle('on', on); }
 
 window.addEventListener('keydown', e=>{
   if (e.key==='Escape') abort();
-  if (e.key==='p' || e.key==='P') S.pauseReq = true;
+  if (e.key==='p' || e.key==='P') setPause(true);
 });
+$('pauseBtn').addEventListener('click', ()=>setPause(!S.pauseReq));
+$('stopBtn').addEventListener('click', ()=>{ if (confirm(T[S.cfg.lang].stopQ)) abort(); });
+
+// keep the screen awake during the session (Chrome/Edge/Safari 16.4+)
+let wakeLock = null;
+async function keepAwake(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible' && $('stage').style.display==='flex' && !S.ended) keepAwake(); });
 
 function getResponse(){
   const L = T[S.cfg.lang];
   return new Promise(res=>{
     const t0 = now(); let done=false;
-    const finish = (resp, via)=>{ if(done) return; done=true; clearTimeout(to);
+    const finish = (resp, via)=>{ if(done) return; done=true; clearTimeout(to); S.cancelResp = null;
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();  // stop a later Space "clicking" a focused button
       window.removeEventListener('keydown',kh); $('btnSame').onclick=$('btnDiff').onclick=null; res({resp, rt: now()-t0, via}); };
+    S.cancelResp = ()=>finish('abort','stop_button');
     const kh = e=>{
       if(e.key==='1'||e.key==='ArrowLeft')  finish('same','key');
       else if(e.key==='2'||e.key==='ArrowRight') finish('diff','key');
       else if(e.key==='Escape') finish('abort','key');
     };
     window.addEventListener('keydown',kh);
-    $('btnSame').onclick = ()=>finish('same','click');
-    $('btnDiff').onclick = ()=>finish('diff','click');
+    $('btnSame').onclick = ()=>finish('same', TOUCH?'touch':'click');
+    $('btnDiff').onclick = ()=>finish('diff', TOUCH?'touch':'click');
     const to = setTimeout(()=>finish('none','timeout'), P.maxRespMs);
   });
 }
@@ -337,7 +386,9 @@ async function runTrial(t, blk, trialNo, isPractice){
   await sleep(P.isi);
   rec.t_test2 = now()-tStart; await present(t.test);
   // --- response
-  show(L.ask,'', ''); $('btnSame').innerHTML = L.same+'<small>1 / ←</small>'; $('btnDiff').innerHTML = L.diff+'<small>2 / →</small>';
+  show(L.ask,'', '');
+  $('btnSame').innerHTML = L.same + (TOUCH? '' : '<small>1 / ←</small>');
+  $('btnDiff').innerHTML = L.diff + (TOUCH? '' : '<small>2 / →</small>');
   showButtons(true);
   const r = await getResponse();
   showButtons(false);
@@ -357,7 +408,7 @@ async function runTrial(t, blk, trialNo, isPractice){
   rec.iti_ms = iti;
   // --- pause on request (between trials only)
   if (S.pauseReq && !S.aborted){
-    show(L.pause,'small'); await waitKey([' ']); S.pauseReq=false; show('＋','big'); await sleep(800);
+    show(L.pause,'small'); await waitKey([' ']); setPause(false); if (S.aborted) return rec; show('＋','big'); await sleep(800);
   }
   return rec;
 }
@@ -376,7 +427,8 @@ async function instructions(blk){
   const L = T[S.cfg.lang];
   const txt = L.instrAud;
   const extra = blk.suppress? L.instrSupp : (blk.delay>=P.delayLong? L.instrAud12 : L.instrAud1);
-  show(txt, 'small', extra + '\n\n' + L.answerHelp + '\n\n' + L.start);
+  show(txt, 'small', extra + '\n\n' + txtHelp(L) + '\n\n' + txtStart(L));
+  $('stage').scrollTop = 0;
   await waitKey([' ']);
 }
 
@@ -409,13 +461,13 @@ async function runSession(){
       const pblk = {idx:0, name:'practice_'+blk.modality, modality:blk.modality, delay:P.delayPractice};
       await runBlock(pblk, pick, true);
       if (S.aborted) break;
-      show(L.practiceDone,'small', L.start); await waitKey([' ']);
+      show(L.practiceDone,'small', txtStart(L)); await waitKey([' ']);
     }
     const trials = makeTrials(blk.modality, S.rng, S.sets);
     await runBlock(blk, trials, false);
     if (S.aborted) break;
     if (blk !== blocks[blocks.length-1]){
-      show(L.blockEnd + '\n' + L.pause, 'small', L.start); await waitKey([' ']);
+      show(L.blockEnd + '\n' + L.pause, 'small', txtStart(L)); await waitKey([' ']);
     }
   }
   finish();
@@ -460,6 +512,8 @@ function download(){
 }
 function finish(){
   const L = T[S.cfg.lang];
+  S.ended = true; $('expbar').style.display = 'none';
+  try{ if (wakeLock) wakeLock.release(); }catch(e){}
   showButtons(false);
   show(S.aborted? '' : L.thanks, 'small', '');
   $('summary').textContent = summaryText();
@@ -484,8 +538,10 @@ $('start').addEventListener('click', ()=>{
             hand:$('hand').value, order:$('order').value, supp:$('supp').checked, fb:$('fb').checked,
             phon:$('phon').value, vol:masterVol, notes:$('notes').value.replace(/[\r\n,]/g,' ') };
   document.documentElement.lang = S.cfg.lang;
-  $('setup').style.display='none'; $('stage').style.display='flex';
-  document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(()=>{});
+  $('setup').style.display='none'; $('stage').style.display='flex'; $('expbar').style.display='flex';
+  const de = document.documentElement;              // iPhone Safari has no fullscreen API; that's fine
+  if (de.requestFullscreen) de.requestFullscreen().catch(()=>{}); else if (de.webkitRequestFullscreen) de.webkitRequestFullscreen();
+  keepAwake();
   runSession();
 });
 </script>
